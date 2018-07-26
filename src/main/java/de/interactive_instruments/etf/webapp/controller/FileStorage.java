@@ -1,17 +1,21 @@
 /**
- * Copyright 2010-2017 interactive instruments GmbH
+ * Copyright 2017-2018 European Union, interactive instruments GmbH
+ * Licensed under the EUPL, Version 1.2 or - as soon they will be approved by
+ * the European Commission - subsequent versions of the EUPL (the "Licence");
+ * You may not use this work except in compliance with the Licence.
+ * You may obtain a copy of the Licence at:
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
+ * https://joinup.ec.europa.eu/software/page/eupl
  *
  * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
+ * distributed under the Licence is distributed on an "AS IS" basis,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * See the Licence for the specific language governing permissions and
+ * limitations under the Licence.
+ *
+ * This work was supported by the EU Interoperability Solutions for
+ * European Public Administrations Programme (http://ec.europa.eu/isa)
+ * through Action 1.17: A Reusable INSPIRE Reference Platform (ARE3NA).
  */
 package de.interactive_instruments.etf.webapp.controller;
 
@@ -24,7 +28,6 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 
-import de.interactive_instruments.exceptions.IOsizeLimitExceededException;
 import org.apache.commons.io.FileUtils;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -33,6 +36,7 @@ import de.interactive_instruments.IFile;
 import de.interactive_instruments.MimeTypeUtils;
 import de.interactive_instruments.UriUtils;
 import de.interactive_instruments.etf.dal.dto.MetaDataItemDto;
+import de.interactive_instruments.exceptions.IOsizeLimitExceededException;
 import de.interactive_instruments.io.FileContentFilterHolder;
 import de.interactive_instruments.io.MultiFileFilter;
 
@@ -121,13 +125,13 @@ class FileStorage {
 								tmpSubDir.deleteDirectory();
 								destinationSubDir.deleteDirectory();
 							} catch (IOException ignore) {}
-							throw new LocalizableApiError("l.download.failed", false, 400, e, maxStorageSizeHr);
+							throw new LocalizableApiError("l.download.failed", false, 400, e);
 						}
 						prepare(download, destinationSubDir, download.getName(), fileFilter, remainingDownloadSize);
 					}
 				}
 				checkSize(destinationSubDir);
-			}catch(IOsizeLimitExceededException e) {
+			} catch (IOsizeLimitExceededException e) {
 				throw new LocalizableApiError("l.max.download.size.exceeded", false, 400, e, maxStorageSizeHr);
 			}
 			return destinationSubDir;
@@ -185,7 +189,7 @@ class FileStorage {
 	}
 
 	private void checkSize(final IFile storageSubDir) throws IOsizeLimitExceededException {
-		if(FileUtils.sizeOfDirectory(storageSubDir)>maxStorageSize) {
+		if (FileUtils.sizeOfDirectory(storageSubDir) > maxStorageSize) {
 			throw new IOsizeLimitExceededException(maxStorageSize);
 		}
 	}

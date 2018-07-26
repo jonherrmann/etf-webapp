@@ -1,26 +1,32 @@
 /**
- * Copyright 2010-2017 interactive instruments GmbH
+ * Copyright 2017-2018 European Union, interactive instruments GmbH
+ * Licensed under the EUPL, Version 1.2 or - as soon they will be approved by
+ * the European Commission - subsequent versions of the EUPL (the "Licence");
+ * You may not use this work except in compliance with the Licence.
+ * You may obtain a copy of the Licence at:
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
+ * https://joinup.ec.europa.eu/software/page/eupl
  *
  * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
+ * distributed under the Licence is distributed on an "AS IS" basis,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * See the Licence for the specific language governing permissions and
+ * limitations under the Licence.
+ *
+ * This work was supported by the EU Interoperability Solutions for
+ * European Public Administrations Programme (http://ec.europa.eu/isa)
+ * through Action 1.17: A Reusable INSPIRE Reference Platform (ARE3NA).
  */
 package de.interactive_instruments.etf.webapp.controller;
 
 import static de.interactive_instruments.etf.webapp.SwaggerConfig.STATUS_TAG_NAME;
+import static de.interactive_instruments.etf.webapp.controller.EtfConfigController.ETF_TEST_OBJECT_MAX_SIZE;
 
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import javax.annotation.PostConstruct;
@@ -29,6 +35,7 @@ import javax.xml.bind.JAXBException;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import com.sun.management.OperatingSystemMXBean;
 
+import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -42,6 +49,8 @@ import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.RestController;
 
 import de.interactive_instruments.IFile;
+import de.interactive_instruments.exceptions.ExcUtils;
+import de.interactive_instruments.exceptions.config.InvalidPropertyException;
 import de.interactive_instruments.exceptions.config.MissingPropertyException;
 import io.swagger.annotations.*;
 
@@ -62,6 +71,7 @@ public class StatusController {
 			+ "were thrown during the last 2 minutes.";
 
 	private IFile tdDir;
+	private static long startTimeMillis;
 
 	private final Logger logger = LoggerFactory.getLogger(StatusController.class);
 
@@ -71,6 +81,7 @@ public class StatusController {
 			"heartbeat",
 			"willExpireAt",
 			"version",
+			"uptime",
 			"allocatedMemory",
 			"presumableFreeMemory",
 			"totalSpace",
@@ -79,7 +90,7 @@ public class StatusController {
 			"messages",
 	})
 	@ApiModel(description = "Extended status information about the service")
-	private static class ExtendedServiceStatus {
+	private final static class ExtendedServiceStatus {
 
 		@ApiModelProperty(value = "Service instance name", example = "Validator X")
 		private final String name;
@@ -99,6 +110,9 @@ public class StatusController {
 
 		@ApiModelProperty(value = "Service instance version", example = "2.0.0")
 		private final String version;
+
+		@ApiModelProperty(value = "Service uptime in seconds", example = "60000")
+		private final String uptime;
 
 		@ApiModelProperty(value = "Amount of allocated memory in bytes", example = "2147483648")
 		private final String allocatedMemory;
@@ -126,6 +140,7 @@ public class StatusController {
 			this.status = status;
 			this.heartbeat = String.valueOf(heartbeat);
 			this.willExpireAt = String.valueOf(willExpireAt);
+			this.uptime = String.valueOf(TimeUnit.MILLISECONDS.toSeconds(System.currentTimeMillis() - startTimeMillis));
 			this.version = version;
 			this.allocatedMemory = String.valueOf(allocatedMemory);
 			this.presumableFreeMemory = String.valueOf(presumableFreeMemory);
@@ -143,6 +158,7 @@ public class StatusController {
 	@PostConstruct
 	public void init() throws IOException, JAXBException, MissingPropertyException {
 		tdDir = config.getPropertyAsFile(EtfConfigController.ETF_TESTDATA_DIR);
+		startTimeMillis = System.currentTimeMillis();
 		mbean = (com.sun.management.OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean();
 		logger.info("Status controller initialized!");
 	}
@@ -161,6 +177,8 @@ public class StatusController {
 	private OperatingSystemMXBean mbean;
 
 	private final static int updateInterval = 20000;
+	// 5 GB
+	private final static long defaultDiskSpaceAlarm = 5368709120L;
 
 	@Scheduled(fixedDelay = updateInterval)
 	public void watch() {
@@ -172,8 +190,24 @@ public class StatusController {
 		ServiceStatus status = ServiceStatus.GOOD;
 		final double usableDiskSpace = ((double) tdDir.getFreeSpace()) / ((double) tdDir.getTotalSpace());
 		final double usableMemory = ((double) allocatedMemory) / ((double) Runtime.getRuntime().maxMemory());
-		if (tdDir.getFreeSpace() < 5368709120L) {
-			statusWarningMessages.add("Less then 5 GB disk space available");
+
+		long testObjectMaxSize;
+		try {
+			testObjectMaxSize = config.getPropertyAsLong(ETF_TEST_OBJECT_MAX_SIZE);
+		} catch (InvalidPropertyException e) {
+			// Should never happen
+			ExcUtils.suppress(e);
+			testObjectMaxSize = 5368709120L;
+		}
+
+		final long freeSpace = tdDir.getFreeSpace();
+		if (freeSpace < testObjectMaxSize) {
+			statusWarningMessages.add("Less then " + FileUtils.byteCountToDisplaySize(testObjectMaxSize) +
+					" disk space available");
+			status = ServiceStatus.MAJOR;
+		} else if (freeSpace < defaultDiskSpaceAlarm) {
+			statusWarningMessages.add("Less then " + FileUtils.byteCountToDisplaySize(defaultDiskSpaceAlarm) +
+					" disk space available");
 			status = ServiceStatus.MAJOR;
 		}
 		if (usableDiskSpace < 0.13) {
@@ -184,13 +218,13 @@ public class StatusController {
 		}
 		if (usableMemory > 0.90) {
 			statusWarningMessages.add("Less then 10% RAM available");
-			status = ServiceStatus.MAJOR;
-		}
-		if (presumableFreeMemory < 536870912L) {
-			statusWarningMessages.add("Less then 512 MB RAM available");
 			if (status != ServiceStatus.MAJOR) {
 				status = ServiceStatus.MINOR;
 			}
+		}
+		if (presumableFreeMemory < 536870912L) {
+			statusWarningMessages.add("Less then 512 MB RAM available");
+			status = ServiceStatus.MAJOR;
 		}
 
 		final long modified = System.currentTimeMillis();
@@ -255,6 +289,12 @@ public class StatusController {
 	@RequestMapping(value = "/v2/status", method = RequestMethod.GET, produces = "application/json")
 	public @ResponseBody ExtendedServiceStatus getStatus() {
 		return serviceStatus.get();
+	}
+
+	public void ensureStatusNotMajor() throws LocalizableApiError {
+		if (ServiceStatus.valueOf(serviceStatus.get().status) == ServiceStatus.MAJOR) {
+			throw new LocalizableApiError("l.system.status.major", false, 503);
+		}
 	}
 
 	public void triggerMaintenance() {

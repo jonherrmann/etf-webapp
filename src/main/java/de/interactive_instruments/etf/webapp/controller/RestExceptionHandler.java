@@ -1,17 +1,21 @@
 /**
- * Copyright 2010-2017 interactive instruments GmbH
+ * Copyright 2017-2018 European Union, interactive instruments GmbH
+ * Licensed under the EUPL, Version 1.2 or - as soon they will be approved by
+ * the European Commission - subsequent versions of the EUPL (the "Licence");
+ * You may not use this work except in compliance with the Licence.
+ * You may obtain a copy of the Licence at:
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
+ * https://joinup.ec.europa.eu/software/page/eupl
  *
  * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
+ * distributed under the Licence is distributed on an "AS IS" basis,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * See the Licence for the specific language governing permissions and
+ * limitations under the Licence.
+ *
+ * This work was supported by the EU Interoperability Solutions for
+ * European Public Administrations Programme (http://ec.europa.eu/isa)
+ * through Action 1.17: A Reusable INSPIRE Reference Platform (ARE3NA).
  */
 package de.interactive_instruments.etf.webapp.controller;
 
@@ -25,25 +29,19 @@ import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.databind.JsonMappingException;
 
 import org.apache.commons.fileupload.FileUploadBase;
-import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
-import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.stereotype.Component;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import de.interactive_instruments.etf.model.exceptions.IllegalEidException;
 import de.interactive_instruments.etf.webapp.dto.ApiError;
 import de.interactive_instruments.exceptions.ObjectWithIdNotFoundException;
-
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 
 /**
  * Handles exceptions thrown by RestControllers
@@ -82,27 +80,40 @@ class RestExceptionHandler {
 			statusController.triggerMaintenance();
 			return new ApiError(exception, request.getRequestURL().toString(), applicationContext);
 		}
+		final int status;
+		final ApiError conv;
 		if (exception instanceof IllegalEidException) {
-			response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+			status = HttpServletResponse.SC_BAD_REQUEST;
+			conv = null;
 		} else if (exception instanceof ObjectWithIdNotFoundException) {
-			response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+			status = HttpServletResponse.SC_NOT_FOUND;
+			conv = null;
 		} else if (exception.getCause() instanceof LocalizableApiError) {
-			response.setStatus(((LocalizableApiError) exception.getCause()).getStatus());
+			status = ((LocalizableApiError) exception.getCause()).getStatus();
+			conv = null;
 		} else if (exception.getCause() instanceof JsonMappingException) {
-			final Throwable e = new LocalizableApiError((JsonMappingException) exception.getCause());
-			return new ApiError(e, request.getRequestURL().toString(), applicationContext);
+			final LocalizableApiError e = new LocalizableApiError((JsonMappingException) exception.getCause());
+			conv = new ApiError(e, request.getRequestURL().toString(), applicationContext);
+			status = e.sc;
 		} else if (exception.getCause() instanceof JsonParseException) {
-			final Throwable e = new LocalizableApiError((JsonParseException) exception.getCause());
-			return new ApiError(e, request.getRequestURL().toString(), applicationContext);
+			final LocalizableApiError e = new LocalizableApiError((JsonParseException) exception.getCause());
+			conv = new ApiError(e, request.getRequestURL().toString(), applicationContext);
+			status = e.sc;
 		} else if (exception instanceof HttpMessageNotReadableException) {
-			final Throwable e = new LocalizableApiError((HttpMessageNotReadableException) exception);
-			return new ApiError(e, request.getRequestURL().toString(), applicationContext);
+			final LocalizableApiError e = new LocalizableApiError((HttpMessageNotReadableException) exception);
+			conv = new ApiError(e, request.getRequestURL().toString(), applicationContext);
+			status = e.sc;
 		} else if (exception instanceof FileUploadBase.SizeLimitExceededException) {
-			final Throwable e = new LocalizableApiError((FileUploadBase.SizeLimitExceededException) exception);
-			return new ApiError(e, request.getRequestURL().toString(), applicationContext);
+			final LocalizableApiError e = new LocalizableApiError((FileUploadBase.SizeLimitExceededException) exception);
+			conv = new ApiError(e, request.getRequestURL().toString(), applicationContext);
+			status = e.sc;
 		} else {
-			response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+			status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR;
+			conv = null;
 		}
-		return new ApiError(exception, request.getRequestURL().toString(), applicationContext);
+		final ApiError apiError = conv != null ? conv
+				: new ApiError(exception, request.getRequestURL().toString(), applicationContext);
+		response.setStatus(status);
+		return apiError;
 	}
 }

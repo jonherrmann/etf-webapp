@@ -17,36 +17,26 @@
  * European Public Administrations Programme (http://ec.europa.eu/isa)
  * through Action 1.17: A Reusable INSPIRE Reference Platform (ARE3NA).
  */
-package de.interactive_instruments.etf.webapp.dto;
+package de.interactive_instruments.etf.webapp.helpers;
 
-import java.util.HashMap;
-import java.util.Map;
-
-import com.fasterxml.jackson.annotation.JsonAnyGetter;
-import com.fasterxml.jackson.annotation.JsonAnySetter;
-import com.fasterxml.jackson.annotation.JsonIgnore;
-
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
+import javax.servlet.http.HttpServletRequest;
 
 /**
  * @author Jon Herrmann ( herrmann aT interactive-instruments doT de )
  */
-@ApiModel(value = "Arguments")
-public class SimpleArguments {
+public class RequestHelper {
 
-	@JsonIgnore
-	private Map<String, String> additionalProperties = new HashMap<String, String>();
+	private RequestHelper() {}
 
-	@ApiModelProperty(value = "Key value pairs. See Implementation Notes for an complete example.")
-	@JsonAnyGetter
-	public Map<String, String> get() {
-		return this.additionalProperties;
-	}
-
-	@JsonAnySetter
-	public void set(String name, String value) {
-		this.additionalProperties.put(name, value);
+	public static boolean isOnlyHtmlRequested(final HttpServletRequest request) {
+		final String acceptHeader = request.getHeader("Accept");
+		if (request.getRequestURI().endsWith(".html") && (acceptHeader == null || acceptHeader.contains("html"))) {
+			return true;
+		}
+		if (acceptHeader.contains("xml") || acceptHeader.contains("json") || acceptHeader.contains("*/*")) {
+			return false;
+		}
+		return true;
 	}
 
 }

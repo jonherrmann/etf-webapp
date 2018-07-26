@@ -1,17 +1,21 @@
 /**
- * Copyright 2010-2017 interactive instruments GmbH
+ * Copyright 2017-2018 European Union, interactive instruments GmbH
+ * Licensed under the EUPL, Version 1.2 or - as soon they will be approved by
+ * the European Commission - subsequent versions of the EUPL (the "Licence");
+ * You may not use this work except in compliance with the Licence.
+ * You may obtain a copy of the Licence at:
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
+ * https://joinup.ec.europa.eu/software/page/eupl
  *
  * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
+ * distributed under the Licence is distributed on an "AS IS" basis,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * See the Licence for the specific language governing permissions and
+ * limitations under the Licence.
+ *
+ * This work was supported by the EU Interoperability Solutions for
+ * European Public Administrations Programme (http://ec.europa.eu/isa)
+ * through Action 1.17: A Reusable INSPIRE Reference Platform (ARE3NA).
  */
 package de.interactive_instruments.etf.webapp.dto;
 
@@ -20,13 +24,14 @@ import static de.interactive_instruments.etf.webapp.dto.DocumentationConstants.E
 import static de.interactive_instruments.etf.webapp.dto.DocumentationConstants.EID_EXAMPLE;
 
 import java.io.IOException;
-import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.Map;
 
 import javax.validation.constraints.Pattern;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+
+import org.springframework.web.util.HtmlUtils;
 
 import de.interactive_instruments.Credentials;
 import de.interactive_instruments.SUtils;
@@ -41,7 +46,6 @@ import de.interactive_instruments.exceptions.StorageException;
 
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
-import org.springframework.web.util.HtmlUtils;
 
 /**
  * @author Jon Herrmann ( herrmann aT interactive-instruments doT de )
@@ -106,7 +110,7 @@ public class SimpleTestObject {
 			testObject.properties().setProperty("temporary", "true");
 			testObject.setVersionFromStr("1.0.0");
 			testObject.setCreationDateNowIfNotSet();
-			testObject.setRemoteResource(URI.create("http://private"));
+			// testObject.setRemoteResource(URI.create("http://private"));
 			testObject.setLocalPath(".");
 			final Credentials credentials;
 			if (!SUtils.isNullOrEmpty(username)) {

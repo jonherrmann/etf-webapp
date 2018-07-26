@@ -1,17 +1,21 @@
 /**
- * Copyright 2010-2017 interactive instruments GmbH
+ * Copyright 2017-2018 European Union, interactive instruments GmbH
+ * Licensed under the EUPL, Version 1.2 or - as soon they will be approved by
+ * the European Commission - subsequent versions of the EUPL (the "Licence");
+ * You may not use this work except in compliance with the Licence.
+ * You may obtain a copy of the Licence at:
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
+ * https://joinup.ec.europa.eu/software/page/eupl
  *
  * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
+ * distributed under the Licence is distributed on an "AS IS" basis,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * See the Licence for the specific language governing permissions and
+ * limitations under the Licence.
+ *
+ * This work was supported by the EU Interoperability Solutions for
+ * European Public Administrations Programme (http://ec.europa.eu/isa)
+ * through Action 1.17: A Reusable INSPIRE Reference Platform (ARE3NA).
  */
 package de.interactive_instruments.etf.webapp.controller;
 
@@ -50,7 +54,10 @@ import de.interactive_instruments.etf.dal.dao.Dao;
 import de.interactive_instruments.etf.dal.dao.WriteDao;
 import de.interactive_instruments.etf.dal.dto.capabilities.TestObjectDto;
 import de.interactive_instruments.etf.dal.dto.run.TestRunDto;
+import de.interactive_instruments.etf.dal.dto.test.ExecutableTestSuiteDto;
 import de.interactive_instruments.etf.model.EID;
+import de.interactive_instruments.etf.model.EidHolder;
+import de.interactive_instruments.etf.model.EidHolderWithParent;
 import de.interactive_instruments.etf.testdriver.*;
 import de.interactive_instruments.etf.webapp.conversion.EidConverter;
 import de.interactive_instruments.etf.webapp.dto.ApiError;
@@ -85,6 +92,9 @@ public class TestRunController implements TestRunEventListener {
 	private EtfConfigController etfConfig;
 
 	@Autowired
+	private StatusController statusController;
+
+	@Autowired
 	private StreamingService streamingService;
 
 	private Timer timer;
@@ -107,7 +117,7 @@ public class TestRunController implements TestRunEventListener {
 
 		@ApiModelProperty(value = "Completed Test Steps", example = "39", dataType = "int")
 		private String val;
-		@ApiModelProperty(value = "Maximum number of Test Steps", example = "103", dataType = "int")
+		@ApiModelProperty(value = "Estimated total number of Test Steps. Additional Test Steps can be generated dynamically during a test run to analyze certain aspects in detail.", example = "103", dataType = "int")
 		private String max;
 		@ApiModelProperty(value = "Log messages", example = "[ \"Test Run started\", \"Assertion X failed\"]")
 		private List<String> log;
@@ -280,7 +290,7 @@ public class TestRunController implements TestRunEventListener {
 	// Rest interfaces
 	///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-	@ApiOperation(value = "Get the Test Run progress as JSON", notes = "Retrieve one Test Run status including log messages, the number of executed and remaining Test Steps", produces = "application/json", tags = {
+	@ApiOperation(value = "Get the Test Run progress as JSON", notes = "Retrieve one Test Run status including log messages, the estimated total number of Test Steps and the number of already executed Test Steps", produces = "application/json", tags = {
 			TEST_RUNS_TAG_NAME})
 	@ApiResponses(value = {
 			@ApiResponse(code = 200, message = "Task progress returned", response = TaskProgressDto.class),
@@ -296,7 +306,8 @@ public class TestRunController implements TestRunEventListener {
 					+ "so that the service can skip the known messages and return only new ones. "
 					+ "Example: the client received 3 log messages and should therefore invoke this interface with pos=3. "
 					+ "In the meantime the service logged a total of 13 messages. As the client knows the first three "
-					+ "messages the service will skip the first 3 messages and return the 10 new messages.", example = "13", required = false, defaultValue = "0") @RequestParam(value = "pos", required = false) String strPos,
+					+ "messages the service will skip the first 3 messages and return the 10 new messages."
+					+ "The test run completed when the value of the val property and the value of the pos property are equal. ", example = "13", required = false, defaultValue = "0") @RequestParam(value = "pos", required = false) String strPos,
 			final HttpServletResponse response) throws StorageException {
 
 		long position = 0;
@@ -483,6 +494,8 @@ public class TestRunController implements TestRunEventListener {
 			HttpServletResponse response)
 			throws LocalizableApiError, InvalidPropertyException {
 
+		statusController.ensureStatusNotMajor();
+
 		if (result.hasErrors()) {
 			throw new LocalizableApiError(result.getFieldError());
 		}
@@ -497,7 +510,23 @@ public class TestRunController implements TestRunEventListener {
 			final TestObjectDto tO = testRunDto.getTestObjects().get(0);
 
 			tO.setAuthor(User.getUser(request));
-			testObjectController.initResourcesAndAdd(tO);
+
+			// Add all Test Object Types supported by the first ETS
+			final Set<EID> requiredTestObjectTypeIds = new HashSet<>();
+			final Iterator<ExecutableTestSuiteDto> etsIterator = testRunDto.getExecutableTestSuites().iterator();
+
+			requiredTestObjectTypeIds
+					.addAll(EidHolderWithParent.getAllIdsAndParentIds(etsIterator.next().getSupportedTestObjectTypes()));
+			// now iterate over the other ETS and delete all Test Object Types that are not supported by the first ETS
+			while (etsIterator.hasNext()) {
+				final Set<EID> supportedIds = EidHolder.getAllIds(etsIterator.next().getSupportedTestObjectTypes());
+				requiredTestObjectTypeIds.removeIf(eid -> !supportedIds.contains(eid));
+			}
+			// if the list is now empty, the Test Suites are incompatible
+			if (requiredTestObjectTypeIds.isEmpty()) {
+				throw new LocalizableApiError("l.ets.supported.testObject.type.incompatible", false, 400);
+			}
+			testObjectController.initResourcesAndAdd(tO, requiredTestObjectTypeIds);
 
 			// Check if test object is already in use
 			for (TestRun tR : taskPoolRegistry.getTasks()) {

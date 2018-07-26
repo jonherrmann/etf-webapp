@@ -1,17 +1,21 @@
 /**
- * Copyright 2010-2017 interactive instruments GmbH
+ * Copyright 2017-2018 European Union, interactive instruments GmbH
+ * Licensed under the EUPL, Version 1.2 or - as soon they will be approved by
+ * the European Commission - subsequent versions of the EUPL (the "Licence");
+ * You may not use this work except in compliance with the Licence.
+ * You may obtain a copy of the Licence at:
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
+ * https://joinup.ec.europa.eu/software/page/eupl
  *
  * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
+ * distributed under the Licence is distributed on an "AS IS" basis,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * See the Licence for the specific language governing permissions and
+ * limitations under the Licence.
+ *
+ * This work was supported by the EU Interoperability Solutions for
+ * European Public Administrations Programme (http://ec.europa.eu/isa)
+ * through Action 1.17: A Reusable INSPIRE Reference Platform (ARE3NA).
  */
 package de.interactive_instruments.etf.webapp.conversion;
 
@@ -19,19 +23,23 @@ import java.io.IOException;
 import java.util.List;
 
 import com.fasterxml.jackson.annotation.*;
-import com.fasterxml.jackson.core.*;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.SerializableString;
 import com.fasterxml.jackson.core.Version;
 import com.fasterxml.jackson.core.io.CharacterEscapes;
 import com.fasterxml.jackson.core.io.SerializedString;
-import com.fasterxml.jackson.databind.*;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JsonDeserializer;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.databind.ser.FilterProvider;
 import com.fasterxml.jackson.databind.ser.impl.SimpleBeanPropertyFilter;
 import com.fasterxml.jackson.databind.ser.impl.SimpleFilterProvider;
 
-import de.interactive_instruments.*;
-import org.apache.commons.lang3.StringEscapeUtils;
 import org.springframework.beans.factory.FactoryBean;
+import org.springframework.web.util.HtmlUtils;
 
 import de.interactive_instruments.etf.dal.dto.Dto;
 import de.interactive_instruments.etf.dal.dto.ModelItemDto;
@@ -39,7 +47,6 @@ import de.interactive_instruments.etf.dal.dto.capabilities.TestObjectDto;
 import de.interactive_instruments.etf.dal.dto.test.ExecutableTestSuiteDto;
 import de.interactive_instruments.etf.dal.dto.translation.TranslationTemplateDto;
 import de.interactive_instruments.etf.model.EID;
-import org.springframework.web.util.HtmlUtils;
 
 /**
  * @author Jon Herrmann ( herrmann aT interactive-instruments doT de )
@@ -108,13 +115,14 @@ public class ObjectMapperFactory implements FactoryBean<ObjectMapper> {
 
 		@Override
 		public SerializableString getEscapeSequence(int ch) {
-			return new SerializedString("\\u"+String.format("%04x", ch));
+			return new SerializedString("\\u" + String.format("%04x", ch));
 		}
 	}
 
 	public static class JsonHtmlXssDeserializer extends JsonDeserializer<String> {
 		@Override
-		public String deserialize(final JsonParser jp, final DeserializationContext ctxt) throws IOException, JsonProcessingException {
+		public String deserialize(final JsonParser jp, final DeserializationContext ctxt)
+				throws IOException, JsonProcessingException {
 			final JsonNode node = jp.getCodec().readTree(jp);
 			return HtmlUtils.htmlEscape(node.asText());
 		}

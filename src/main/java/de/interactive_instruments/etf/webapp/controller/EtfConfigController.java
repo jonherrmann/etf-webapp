@@ -1,17 +1,21 @@
 /**
- * Copyright 2010-2017 interactive instruments GmbH
+ * Copyright 2017-2018 European Union, interactive instruments GmbH
+ * Licensed under the EUPL, Version 1.2 or - as soon they will be approved by
+ * the European Commission - subsequent versions of the EUPL (the "Licence");
+ * You may not use this work except in compliance with the Licence.
+ * You may obtain a copy of the Licence at:
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
+ * https://joinup.ec.europa.eu/software/page/eupl
  *
  * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
+ * distributed under the Licence is distributed on an "AS IS" basis,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * See the Licence for the specific language governing permissions and
+ * limitations under the Licence.
+ *
+ * This work was supported by the EU Interoperability Solutions for
+ * European Public Administrations Programme (http://ec.europa.eu/isa)
+ * through Action 1.17: A Reusable INSPIRE Reference Platform (ARE3NA).
  */
 package de.interactive_instruments.etf.webapp.controller;
 
@@ -31,7 +35,6 @@ import javax.servlet.ServletContext;
 
 import ch.qos.logback.classic.Level;
 
-import de.interactive_instruments.exceptions.config.InvalidPropertyException;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.io.input.ReversedLinesFileReader;
 import org.apache.commons.lang.SystemUtils;
@@ -43,7 +46,6 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartResolver;
 import org.springframework.web.multipart.commons.CommonsMultipartResolver;
 
 import de.interactive_instruments.IFile;
@@ -52,6 +54,7 @@ import de.interactive_instruments.LogUtils;
 import de.interactive_instruments.SUtils;
 import de.interactive_instruments.etf.EtfConstants;
 import de.interactive_instruments.exceptions.ExcUtils;
+import de.interactive_instruments.exceptions.config.InvalidPropertyException;
 import de.interactive_instruments.exceptions.config.MissingPropertyException;
 import de.interactive_instruments.properties.PropertyHolder;
 import de.interactive_instruments.properties.PropertyUtils;
@@ -71,6 +74,7 @@ public class EtfConfigController implements PropertyHolder {
 	}
 
 	public static final String ETF_WEBAPP_BASE_URL = "etf.webapp.base.url";
+	public static final String ETF_CSS_URL = "etf.webapp.css.url";
 	public static final String ETF_API_BASE_URL = "etf.api.base.url";
 	public static final String ETF_API_ALLOW_ORIGIN = "etf.api.allow.origin";
 	public static final String ETF_BRANDING_TEXT = "etf.branding.text";
@@ -122,7 +126,7 @@ public class EtfConfigController implements PropertyHolder {
 	private static final Map<String, String> defaultProperties = Collections.unmodifiableMap(new HashMap<String, String>() {
 		{
 			put(ETF_WEBAPP_BASE_URL, "http://localhost:8080/etf-webapp");
-			put(ETF_BRANDING_TEXT, "");
+			put(ETF_BRANDING_TEXT, "ETF");
 			put(ETF_TESTOBJECT_ALLOW_PRIVATENET_ACCESS, "false");
 			put(ETF_TEST_OBJECT_MAX_SIZE, "5368709120");
 			put(ETF_REPORT_COMPARISON, "false");
@@ -131,7 +135,7 @@ public class EtfConfigController implements PropertyHolder {
 			// 8 days
 			put(ETF_TESTREPORTS_LIFETIME_EXPIRATION, "11520");
 			put(ETF_HELP_PAGE_URL,
-					"http://docs.etf-validator.net/User_manuals/Simplified_workflows.html");
+					"https://docs.etf-validator.net/v2.0/User_manuals/Simplified_workflows.html");
 			put(ETF_BSX_RECREATE_CONFIG, "true");
 			put(ETF_SUBMIT_ERRORS, "false");
 			put(ETF_MAX_UPLOAD_SIZE, "auto");
@@ -198,7 +202,7 @@ public class EtfConfigController implements PropertyHolder {
 				II_Constants.II_COPYRIGHT);
 
 		// Set HTTP Client to ETF
-		System.setProperty("http.agent", "ETF validator (version: " + version + " )");
+		System.setProperty("http.ii.agent", "ETF validator (" + version + ")");
 
 		System.setProperty("java.awt.headless", "true");
 		final String encoding = System.getProperty("file.encoding");
@@ -315,6 +319,8 @@ public class EtfConfigController implements PropertyHolder {
 				configProperties.setProperty(filePathPropertyKey, absPath.getAbsolutePath());
 			}
 		}
+		// Check if this version ships newer test drivers and update them
+		updateTestDrivers();
 
 		// Basex data source
 		final IFile bsxConfigDir = getPropertyAsFile(EtfConstants.ETF_DATASOURCE_DIR).expandPath("db");
@@ -341,6 +347,12 @@ public class EtfConfigController implements PropertyHolder {
 		final String apiBaseUrl = configProperties.getProperty(ETF_API_BASE_URL);
 		if (SUtils.isNullOrEmpty(apiBaseUrl)) {
 			configProperties.setProperty(ETF_API_BASE_URL, configProperties.getProperty(ETF_WEBAPP_BASE_URL) + "/v2");
+		}
+
+		// Set CSS url
+		final String cssUrl = configProperties.getProperty(ETF_CSS_URL);
+		if (SUtils.isNullOrEmpty(cssUrl)) {
+			configProperties.setProperty(ETF_CSS_URL, configProperties.getProperty(ETF_WEBAPP_BASE_URL) + "/css");
 		}
 
 		// Set CORS
@@ -378,10 +390,22 @@ public class EtfConfigController implements PropertyHolder {
 			// Fallback limit 100 MB, only checked in the web interface
 			configProperties.setProperty(ETF_MAX_UPLOAD_SIZE, String.valueOf("104857600"));
 		}
+		try {
+			final long maxUploadSize = getPropertyAsLong(ETF_MAX_UPLOAD_SIZE);
+			final long maxObjectSize = getPropertyAsLong(ETF_TEST_OBJECT_MAX_SIZE);
+			if (maxUploadSize > maxObjectSize) {
+				logger.warn("The value of the {} property should be set to value greater "
+						+ "than the value {} of the {} property.",
+						ETF_TEST_OBJECT_MAX_SIZE, maxUploadSize, ETF_MAX_UPLOAD_SIZE);
+				configProperties.setProperty(ETF_TEST_OBJECT_MAX_SIZE, configProperties.getProperty(ETF_MAX_UPLOAD_SIZE));
+			}
+		} catch (InvalidPropertyException e) {
+			// Should never happen
+			ExcUtils.suppress(e);
+		}
 
 		plausabilityCheckMinutes(ETF_TESTREPORTS_LIFETIME_EXPIRATION);
 		plausabilityCheckMinutes(ETF_TESTOBJECT_UPLOADED_LIFETIME_EXPIRATION);
-
 
 		configProperties.forEach((k, v) -> logger.info(k + " = " + v));
 		instance = this;
@@ -398,17 +422,17 @@ public class EtfConfigController implements PropertyHolder {
 			configProperties.setProperty(property, defaultVal);
 			return;
 		}
-		if(minutes<0) {
+		if (minutes < 0) {
 			logger.error("{} : a negative value is not allowed: {}. Setting default value: {}",
 					property, minutes, defaultVal);
 			configProperties.setProperty(property, defaultVal);
-		}else if(minutes<20 && logger.isDebugEnabled()) {
+		} else if (minutes < 20 && logger.isDebugEnabled()) {
 			// Values less than 20 minutes are allowed in debug mode
-			logger.error("{} : a value less than 20 minutes ( {} ) can interfere with the Test "
-							+ "Runs. Setting default value: {}",
+			logger.error("{} : a value less than 20 minutes ( {}) can interfere with the Test "
+					+ "Runs. Setting default value: {}",
 					property, minutes, defaultVal);
 			configProperties.setProperty(property, defaultVal);
-		}else if(minutes>131400) {
+		} else if (minutes > 131400) {
 			logger.warn("{} : a value higher than 3 month might be be very optimistic: {}",
 					property, minutes);
 			configProperties.setProperty(property, defaultVal);
@@ -450,24 +474,37 @@ public class EtfConfigController implements PropertyHolder {
 			stream.close();
 		}
 
-		// Copy test drivers (will be automatically downloaded in future releases)
-		final String tdDirName = "/testdrivers";
-		final Set<String> tds = servletContext.getResourcePaths(tdDirName);
-		for (final String td : tds) {
-			final String tdName = td.substring(tdDirName.length());
-			final IFile tdJar = new IFile(tdDir, tdName);
-			final InputStream jarStream = servletContext.getResourceAsStream(td);
-			try (final FileOutputStream out = new FileOutputStream(tdJar)) {
-				IOUtils.copy(jarStream, out);
-			} catch (final IOException e) {
-				tdJar.delete();
-				logger.error("Could not copy test driver: ", e);
-			} finally {
-				jarStream.close();
-			}
-		}
+		updateTestDrivers();
 
 		return checkDirForConfig(etfDir);
+	}
+
+	private void updateTestDrivers() throws IOException {
+		final IFile tdDir = etfDir.expandPath(defaultProperties.get(ETF_TESTDRIVERS_DIR));
+		tdDir.mkdirs();
+		final IFile.VersionedFileList latestDriverVersions = tdDir.getVersionedFilesInDir();
+
+		// Copy test drivers
+		final String tdDirName = "/testdrivers";
+		final Set<String> tds = servletContext.getResourcePaths(tdDirName);
+		if (tds != null) {
+			for (final String td : tds) {
+				final String testDriverName = td.substring(tdDirName.length());
+				if (!SUtils.isNullOrEmpty(testDriverName) && latestDriverVersions.isNewer(testDriverName)) {
+					logger.info("Installing Test Driver " + testDriverName);
+					final IFile tdJar = new IFile(tdDir, testDriverName);
+					final InputStream jarStream = servletContext.getResourceAsStream(td);
+					try (final FileOutputStream out = new FileOutputStream(tdJar)) {
+						IOUtils.copy(jarStream, out);
+					} catch (final IOException e) {
+						tdJar.delete();
+						logger.error("Could not copy test driver: ", e);
+					} finally {
+						jarStream.close();
+					}
+				}
+			}
+		}
 	}
 
 	public static EtfConfigController getInstance() {

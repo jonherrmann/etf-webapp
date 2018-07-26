@@ -1,5 +1,5 @@
 /**
- * Copyright 2017-2018 European Union, interactive instruments GmbH
+ * Copyright 2017 European Union, interactive instruments GmbH
  * Licensed under the EUPL, Version 1.2 or - as soon they will be approved by
  * the European Commission - subsequent versions of the EUPL (the "Licence");
  * You may not use this work except in compliance with the Licence.
@@ -17,36 +17,12 @@
  * European Public Administrations Programme (http://ec.europa.eu/isa)
  * through Action 1.17: A Reusable INSPIRE Reference Platform (ARE3NA).
  */
+@javax.xml.bind.annotation.XmlSchema (
+		xmlns = {
+				@javax.xml.bind.annotation.XmlNs(prefix = "etf",
+						namespaceURI=de.interactive_instruments.etf.EtfConstants.ETF_XMLNS)
+		},
+		namespace = de.interactive_instruments.etf.EtfConstants.ETF_XMLNS,
+		elementFormDefault = javax.xml.bind.annotation.XmlNsForm.QUALIFIED
+)
 package de.interactive_instruments.etf.webapp.dto;
-
-import java.util.HashMap;
-import java.util.Map;
-
-import com.fasterxml.jackson.annotation.JsonAnyGetter;
-import com.fasterxml.jackson.annotation.JsonAnySetter;
-import com.fasterxml.jackson.annotation.JsonIgnore;
-
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
-
-/**
- * @author Jon Herrmann ( herrmann aT interactive-instruments doT de )
- */
-@ApiModel(value = "Arguments")
-public class SimpleArguments {
-
-	@JsonIgnore
-	private Map<String, String> additionalProperties = new HashMap<String, String>();
-
-	@ApiModelProperty(value = "Key value pairs. See Implementation Notes for an complete example.")
-	@JsonAnyGetter
-	public Map<String, String> get() {
-		return this.additionalProperties;
-	}
-
-	@JsonAnySetter
-	public void set(String name, String value) {
-		this.additionalProperties.put(name, value);
-	}
-
-}
